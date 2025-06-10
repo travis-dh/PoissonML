@@ -22,13 +22,29 @@ int main(int argc, char* argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
     MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
     
+    // Parse command line argument for number of simulations
+    int numrep = 32;  // Default value
+    if (argc >= 2) {
+        numrep = atoi(argv[1]);
+        if (numrep <= 0) {
+            if (taskid == 0) {
+                printf("Error: Number of simulations must be positive. Using default value of 32.\n");
+            }
+            numrep = 32;
+        }
+    }
+    
+    if (taskid == 0) {
+        printf("Running %d simulations with %d MPI processes\n", numrep, numtasks);
+        printf("Output will be saved to generated_data/ directory\n");
+    }
+    
     // Problem parameters
     const int M = 1000, N = 1000;
     const int forb_i[] = {700, 300, 200, 500};
     const int forb_j[] = {500, 400, 800, 100};
     const int niter = 100000;
     const int mod = 10;
-    const int numrep = 32;  // Now run sequentially
     const float a = 1.9f;
     const float maxerror = 1e-6f;
     const float aover4 = a / 4.0f;
@@ -173,11 +189,17 @@ int main(int argc, char* argv[])
             }
         }
         
-        // Master writes results
+        // Master writes results to generated_data/ directory
         if (taskid == 0) {
             stringstream fname;
-            fname << "simulation_" << rep + 1 << ".txt";
+            fname << "generated_data/simulation_" << rep + 1 << ".txt";
             ofstream fs(fname.str().c_str());
+            
+            if (!fs.is_open()) {
+                printf("Error: Could not open output file %s\n", fname.str().c_str());
+                printf("Make sure the generated_data/ directory exists.\n");
+                MPI_Abort(MPI_COMM_WORLD, -1);
+            }
             
             // Write parameters
             fs << "Simulation " << rep + 1 << " " << M << " " << N << " ";
@@ -188,6 +210,8 @@ int main(int argc, char* argv[])
             
             if (n >= niter) {
                 fs << "Completed maximum iterations (" << niter << ") without convergence" << endl;
+            } else {
+                fs << "Converged at iteration n= " << n << " with max_change= " << maxerror << endl;
             }
             
             // Write temperature field
@@ -207,7 +231,7 @@ int main(int argc, char* argv[])
     
     MPI_Finalize();
     if (taskid == 0) {
-        printf("All %d simulations completed!\n", numrep);
+        printf("All %d simulations completed and saved to generated_data/!\n", numrep);
     }
     return 0;
 }
